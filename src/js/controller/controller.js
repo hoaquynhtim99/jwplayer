@@ -235,7 +235,7 @@ Object.assign(Controller.prototype, {
 
             _model.change('viewable', viewableChange);
             _model.change('viewable', _checkPlayOnViewable);
-            _model.once('change:autostartFailed change:autostartMuted change:mute', function(model) {
+            _model.once('change:autostartFailed change:mute', function(model) {
                 model.off('change:viewable', _checkPlayOnViewable);
             });
 
@@ -376,6 +376,10 @@ Object.assign(Controller.prototype, {
 
             const playReason = _getReason(meta);
             _model.set('playReason', playReason);
+            // Stop autoplay behavior if the video is started by the user or an api call
+            if (playReason === 'interaction' || playReason === 'external') {
+                _model.set('playOnViewable', false);
+            }
 
             const adState = _getAdState();
             if (_.isString(adState)) {
@@ -422,6 +426,9 @@ Object.assign(Controller.prototype, {
                 return;
             }
 
+            // Reset cancelable for new autoplay test below.
+            checkAutoStartCancelable = cancelable(_checkAutoStart);
+
             // Detect and store browser autoplay setting in the model.
             const adConfig = _model.get('advertising');
             canAutoplay(mediaPool, {
@@ -432,9 +439,13 @@ Object.assign(Controller.prototype, {
                 _model.set('canAutoplay', result);
 
                 // Only apply autostartMuted on un-muted autostart attempt.
-                if (_model.get('canAutoplay') === AUTOPLAY_MUTED && !_this.getMute()) {
+                if (result === AUTOPLAY_MUTED && !_this.getMute()) {
                     _model.set('autostartMuted', true);
                     updateProgramSoundSettings();
+
+                    _model.once('change:autostartMuted', function(model) {
+                        model.off('change:viewable', _checkPlayOnViewable);
+                    });
                 }
 
                 return _play({ reason: 'autostart' }).catch(() => {
